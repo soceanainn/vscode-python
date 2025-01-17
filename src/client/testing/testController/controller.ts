@@ -215,7 +215,7 @@ export class PythonTestController implements ITestController, IExtensionSingleAc
             if (settings.testing.autoTestDiscoverOnSaveEnabled) {
                 traceVerbose(`Testing: Setting up watcher for ${workspace.uri.fsPath}`);
                 this.watchForSettingsChanges(workspace);
-                this.watchForTestContentChangeOnSave();
+                this.watchForTestContentChangeOnSave(settings.testing.pytestEnabled);
             }
         });
     }
@@ -549,16 +549,32 @@ export class PythonTestController implements ITestController, IExtensionSingleAc
         );
     }
 
-    private watchForTestContentChangeOnSave(): void {
+    private watchForTestContentChangeOnSave(pytestEnabled: boolean): void {
         this.disposables.push(
             onDidSaveTextDocument(async (doc: TextDocument) => {
-                if (doc.fileName.endsWith('.py')) {
+                if (this.shouldTriggerTestRefreshForTextDocument(doc.fileName, pytestEnabled)) {
                     traceVerbose(`Testing: Trigger refresh after saving ${doc.uri.fsPath}`);
                     this.sendTriggerTelemetry('watching');
                     this.refreshData.trigger(doc.uri, false);
                 }
             }),
         );
+    }
+
+    /**
+     * This function allows us to avoid eagerly refreshing tests when saving non-test Python files.
+     * @param docFileName The name of the file that has been saved.
+     * @param pytestEnabled The value of pytestEnabled from the workspace settings.
+     * @returns Whether this file should trigger a test discovery refresh for the test tool.
+     */
+    private shouldTriggerTestRefreshForTextDocument(docFileName: String, pytestEnabled: boolean): boolean {
+        if (pytestEnabled) {
+            // pytest files must begin with "test_" or end with "_test".
+            return (docFileName.startsWith("test_") && docFileName.endsWith(".py")) || (docFileName.endsWith("_test.py"));
+        } else {
+            // unittest supports overriding test file pattern, so just look for any python file here
+            return docFileName.endsWith('.py')
+        }
     }
 
     /**
